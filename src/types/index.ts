@@ -1,24 +1,15 @@
-export interface ScanOptions {
-  borderColor?: string;
-  borderWidth?: number;
-  borderRadius?: number;
-  overlayMargin?: number;
-  overlayHeight?: number;
-  enableFlash?: boolean;
-  enableAutoFocus?: boolean;
-  imageQuality?: number;
+export interface DocScannerOptions {
+  showCropOverlay?: boolean;
+  overlayBorderColor?: string;
+  overlayHeightRatio?: number;
+  overlayHorizontalInset?: number;
+  scanBothSides?: boolean;
+  jpegQuality?: number;
 }
 
 export interface ScanResult {
-  frontImagePath?: string;
-  backImagePath?: string;
-  frontImageBlob?: Blob;
-  backImageBlob?: Blob;
-  timestamp: number;
+  frontImageDataUrl?: string;
+  backImageDataUrl?: string;
   isSuccess: boolean;
   errorMessage?: string;
-}
-
-export interface CameraConstraints {
-  video: MediaTrackConstraints;
 }

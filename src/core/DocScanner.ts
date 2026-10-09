@@ -1,130 +1,96 @@
-import { ScanOptions, ScanResult } from '../types';
+import type { DocScannerOptions, ScanResult } from '../types';
 
 /**
- * Main class for DocScanner SDK on Web
+ * Browser document scanner.
+ * Draws a white crop rectangle over <video> and crops on capture via canvas.
  */
 export class DocScanner {
-  private static instance: DocScanner;
-  private videoElement: HTMLVideoElement | null = null;
+  static readonly VERSION = '1.0.0';
+
+  private video: HTMLVideoElement | null = null;
+  private overlay: HTMLDivElement | null = null;
   private stream: MediaStream | null = null;
-  private canvas: HTMLCanvasElement | null = null;
+  private options: Required<DocScannerOptions> = {
+    showCropOverlay: true,
+    overlayBorderColor: '#ffffff',
+    overlayHeightRatio: 0.35,
+    overlayHorizontalInset: 32,
+    scanBothSides: false,
+    jpegQuality: 0.95,
+  };
 
-  private constructor() {}
-
-  /**
-   * Get singleton instance
-   */
-  public static getInstance(): DocScanner {
-    if (!DocScanner.instance) {
-      DocScanner.instance = new DocScanner();
-    }
-    return DocScanner.instance;
+  configure(options: DocScannerOptions) {
+    this.options = { ...this.options, ...options };
   }
 
-  /**
-   * Request camera permission
-   */
-  public async requestCameraPermission(): Promise<boolean> {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      });
-      
-      stream.getTracks().forEach(track => track.stop());
-      return true;
-    } catch (error) {
-      console.error('Camera permission denied:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Check if camera permission is granted
-   */
-  public async hasCameraPermission(): Promise<boolean> {
-    try {
-      const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-      return result.state === 'granted';
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Scan a single document
-   */
-  public async scanDocument(options: ScanOptions = {}): Promise<ScanResult> {
-    try {
-      // TODO: Implement camera UI and capture
-      throw new Error('Not implemented yet');
-    } catch (error) {
-      return {
-        timestamp: Date.now(),
-        isSuccess: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * Scan both sides of a document
-   */
-  public async scanBothSides(options: ScanOptions = {}): Promise<ScanResult> {
-    try {
-      // TODO: Implement both sides scanning
-      throw new Error('Not implemented yet');
-    } catch (error) {
-      return {
-        timestamp: Date.now(),
-        isSuccess: false,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * Get SDK version
-   */
-  public getVersion(): string {
-    return '1.0.0';
-  }
-
-  /**
-   * Start camera stream
-   */
-  private async startCamera(options: ScanOptions): Promise<void> {
+  async start(container: HTMLElement): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: 'environment',
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
+      video: { facingMode: 'environment' },
+      audio: false,
     });
+    this.video = document.createElement('video');
+    this.video.playsInline = true;
+    this.video.autoplay = true;
+    this.video.srcObject = this.stream;
+    this.video.style.width = '100%';
+    this.video.style.height = '100%';
+    this.video.style.objectFit = 'cover';
+    container.style.position = 'relative';
+    container.appendChild(this.video);
 
-    if (this.videoElement) {
-      this.videoElement.srcObject = this.stream;
-      await this.videoElement.play();
+    if (this.options.showCropOverlay) {
+      this.overlay = document.createElement('div');
+      Object.assign(this.overlay.style, {
+        position: 'absolute',
+        left: `${this.options.overlayHorizontalInset}px`,
+        right: `${this.options.overlayHorizontalInset}px`,
+        top: '50%',
+        height: `${this.options.overlayHeightRatio * 100}%`,
+        transform: 'translateY(-50%)',
+        border: `3px solid ${this.options.overlayBorderColor}`,
+        borderRadius: '12px',
+        boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+        pointerEvents: 'none',
+      } as CSSStyleDeclaration);
+      container.appendChild(this.overlay);
     }
+    await this.video.play();
   }
 
-  /**
-   * Stop camera stream
-   */
-  private stopCamera(): void {
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
-      this.stream = null;
+  /** Capture current frame and crop to the white overlay rectangle. */
+  async capture(): Promise<ScanResult> {
+    if (!this.video || !this.overlay) {
+      return { isSuccess: false, errorMessage: 'Scanner not started' };
     }
+    const vw = this.video.videoWidth;
+    const vh = this.video.videoHeight;
+    const rect = this.overlay.getBoundingClientRect();
+    const videoRect = this.video.getBoundingClientRect();
+    const scaleX = vw / videoRect.width;
+    const scaleY = vh / videoRect.height;
+    const sx = (rect.left - videoRect.left) * scaleX;
+    const sy = (rect.top - videoRect.top) * scaleY;
+    const sw = rect.width * scaleX;
+    const sh = rect.height * scaleY;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.floor(sw));
+    canvas.height = Math.max(1, Math.floor(sh));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { isSuccess: false, errorMessage: 'Canvas unavailable' };
+    ctx.drawImage(this.video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    return {
+      isSuccess: true,
+      frontImageDataUrl: canvas.toDataURL('image/jpeg', this.options.jpegQuality),
+    };
   }
 
-  /**
-   * Crop image to overlay bounds
-   */
-  private cropImage(
-    sourceCanvas: HTMLCanvasElement,
-    options: ScanOptions
-  ): Blob | null {
-    // TODO: Implement cropping logic
-    return null;
+  stop() {
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.stream = null;
+    this.video?.remove();
+    this.overlay?.remove();
+    this.video = null;
+    this.overlay = null;
   }
 }

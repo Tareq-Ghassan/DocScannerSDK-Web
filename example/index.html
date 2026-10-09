@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"/><title>DocScanner Web Example</title>
+<style>
+  body{font-family:system-ui;margin:0;background:#111;color:#fff}
+  #preview{width:100vw;height:70vh;background:#000}
+  button{margin:16px;padding:12px 20px;font-size:16px}
+</style></head>
+<body>
+  <div id="preview"></div>
+  <button id="go">Start + Capture</button>
+  <img id="out" style="max-width:90vw"/>
+  <script type="module">
+    // Demo only — build the package first for production use.
+    import { DocScanner } from '../src/index.ts';
+    const scanner = new DocScanner();
+    document.getElementById('go').onclick = async () => {
+      await scanner.start(document.getElementById('preview'));
+      await new Promise(r => setTimeout(r, 1500));
+      const result = await scanner.capture();
+      if (result.frontImageDataUrl) document.getElementById('out').src = result.frontImageDataUrl;
+      scanner.stop();
+    };
+  </script>
+</body>
+</html>
